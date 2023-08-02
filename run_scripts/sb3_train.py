@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from stable_baselines3 import PPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
+from stable_baselines3.common.callbacks import BaseCallback
 from torch import nn
 
 from social_dilemmas.envs.pettingzoo_env import parallel_env
@@ -55,6 +56,19 @@ def parse_args():
             improves cooperation in intertemporal social dilemmas'",
     )
     parser.add_argument(
+        "--play-altruistic-game",
+        type=bool,
+        default=True,
+        help="Frame environment as an altruistic game",
+    )
+    parser.add_argument(
+        "--altruistic-model",
+        type=str,
+        default="A",
+        choices=["A", "B", "C", "D"],
+        help="The model of atruism to use",
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         default=5,
@@ -65,6 +79,12 @@ def parse_args():
         type=float,
         default=0.05,
         help="Disadvantageous inequity aversion factor",
+    )
+    parser.add_argument(
+        "--alt-alpha",
+        type=float,
+        default=0.5,
+        help="Social welfare coefficient for altruistic game",
     )
     args = parser.parse_args()
     return args
@@ -118,12 +138,15 @@ def main(args):
     total_timesteps = args.total_timesteps
     use_collective_reward = args.use_collective_reward
     inequity_averse_reward = args.inequity_averse_reward
+    play_altruistic_game = args.play_altruistic_game
+    altruistic_model = args.altruistic_model
     alpha = args.alpha
     beta = args.beta
+    alt_alpha = args.alt_alpha
 
     # Training
     num_cpus = 4  # number of cpus
-    num_envs = 12  # number of parallel multi-agent environments
+    num_envs = 12  # number of parallel multi-agent environments (changed from 12 to 1)
     num_frames = 6  # number of frames to stack together; use >4 to avoid automatic VecTransposeImage
     features_dim = (
         128  # output layer of cnn extractor AND shared layer for policy and value functions
@@ -139,23 +162,28 @@ def main(args):
     grad_clip = 40
     verbose = 3
 
+    # parallel_env() - returns -> _parallel_env - inherits -> ssd_parallel_env - contains -> HarvestEnv - inherits -> MapEnv
+
     env = parallel_env(
         max_cycles=rollout_len,
         env=env_name,
         num_agents=num_agents,
         use_collective_reward=use_collective_reward,
         inequity_averse_reward=inequity_averse_reward,
+        play_altruistic_game=play_altruistic_game,
+        altruistic_model=altruistic_model,
         alpha=alpha,
         beta=beta,
+        alt_alpha=alt_alpha,
     )
+
     env = ss.observation_lambda_v0(env, lambda x, _: x["curr_obs"], lambda s: s["curr_obs"])
     env = ss.frame_stack_v1(env, num_frames)
-    env = ss.pettingzoo_env_to_vec_env_v1(env)
+    env = ss.pettingzoo_env_to_vec_env_v1(env)#.unwrapped.par_env.unwrapped.old_env.rewards
     env = ss.concat_vec_envs_v1(
         env, num_vec_envs=num_envs, num_cpus=num_cpus, base_class="stable_baselines3"
     )
     env = VecMonitor(env)
-
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(
@@ -164,7 +192,7 @@ def main(args):
         net_arch=[features_dim],
     )
 
-    tensorboard_log = "./results/sb3/cleanup_ppo_paramsharing"
+    tensorboard_log = f"./results/sb3/cleanup_ppo_paramsharing/{args.env_name}/{args.altruistic_model}/{args.alt_alpha}" # how does sb3 use tensorboard?
 
     model = PPO(
         "CnnPolicy",
@@ -182,13 +210,45 @@ def main(args):
         tensorboard_log=tensorboard_log,
         verbose=verbose,
     )
+#
+    #class TensorboardCallback(BaseCallback):
+    #    """
+    #    Custom Callback for logging reward values in tensorboard
+    #    """
+#
+    #    def __init__(self, verbose=0):
+    #        super().__init__(verbose)
+#
+    #    def _on_step(self) -> bool:
+    #        # log reward values
+    #        
+    #        #print(env.rewards)
+    #        #rewards, payoffs, social_welfare= env.unwrapped.vec_envs[0].par_env.env.unwrapped.old_env.rewards
+#
+    #        #env.unwrapped.close_extras()
+#
+#
+    #        #rewards = env.unwrapped.vec_envs[0].par_env.env.unwrapped.old_env.rewards[0]
+    #        #payoffs = env.unwrapped.vec_envs[0].par_env.env.unwrapped.old_env.rewards[1]
+    #        #social_welfare = env.unwrapped.vec_envs[0].par_env.env.unwrapped.old_env.rewards[2]
+#
+    #        #for i, reward in enumerate(rewards.values()):
+    #        #    self.logger.record(f"agent_rewards/{i}", reward)
+    #        #
+    #        #for i, payoff in enumerate(payoffs.values()):
+    #        #    self.logger.record(f"agent_payoffs/{i}", payoff)
+##
+    #        #self.logger.record("cumulatives/social_welfare", social_welfare)
+#
+    #        return True
+
     model.learn(total_timesteps=total_timesteps)
 
     logdir = model.logger.dir
     model.save(logdir + "/model")
     del model
     model = PPO.load(logdir + "/model")  # noqa: F841
-
+    
 
 if __name__ == "__main__":
     args = parse_args()

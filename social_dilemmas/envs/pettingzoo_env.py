@@ -67,4 +67,5 @@ class _parallel_env(ssd_parallel_env, EzPickle):
     def __init__(self, max_cycles, **ssd_args):
         EzPickle.__init__(self, max_cycles, **ssd_args)
         env = get_env_creator(**ssd_args)(ssd_args["num_agents"])
+        self.old_env = env
         super().__init__(env, max_cycles)

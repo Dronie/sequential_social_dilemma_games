@@ -67,8 +67,11 @@ class MapEnv(MultiAgentEnv):
         return_agent_actions=False,
         use_collective_reward=False,
         inequity_averse_reward=False,
+        play_altruistic_game=False, # if true, play altruistic game (uses alt_alpha)
+        altruistic_model="A",
         alpha=0.0,
         beta=0.0,
+        alt_alpha=0.0, # set the alpha parameter for altrustic game
     ):
         """
 
@@ -93,10 +96,14 @@ class MapEnv(MultiAgentEnv):
         self.return_agent_actions = return_agent_actions
         self.use_collective_reward = use_collective_reward
         self.inequity_averse_reward = inequity_averse_reward
+        self.play_altruistic_game = play_altruistic_game # altruistic game flag
+        self.altruistic_model = altruistic_model
         self.alpha = alpha
         self.beta = beta
+        self.alt_alpha = alt_alpha # altrustic game alpha
         self.all_actions = _MAP_ENV_ACTIONS.copy()
         self.all_actions.update(extra_actions)
+        self.rewards = (0, 0, 0)
         # Map without agents or beams
         self.world_map = np.full(
             (len(self.base_map), len(self.base_map[0])), fill_value=b" ", dtype="c"
@@ -288,11 +295,29 @@ class MapEnv(MultiAgentEnv):
             rewards[agent.agent_id] = agent.compute_reward()
             dones[agent.agent_id] = agent.get_done()
             infos[agent.agent_id] = {}
+        
+        payoffs = rewards.copy()
 
         if self.use_collective_reward:
             collective_reward = sum(rewards.values())
             for agent in rewards.keys():
                 rewards[agent] = collective_reward
+
+        if self.play_altruistic_game: # altruistic game stuff (also implement for just a single agent)
+            social_welfare = sum(rewards.values())
+            if self.altruistic_model == "A":
+                for agent in rewards.keys(): # set all agent's rewards to altrustic reward A
+                    rewards[agent] = rewards[agent] + self.alt_alpha * social_welfare
+            elif self.altruistic_model == "B":
+                for agent in rewards.keys(): # set all agent's rewards to altrustic reward B
+                    rewards[agent] = (1 - self.alt_alpha) * rewards[agent] + self.alt_alpha * (1/self.num_agents) * social_welfare
+            elif self.altruistic_model == "C":
+                for agent in rewards.keys(): # set all agent's rewards to altrustic reward C
+                    rewards[agent] = (1 - self.alt_alpha) * rewards[agent] + self.alt_alpha * social_welfare
+            if self.altruistic_model == "D":
+                for agent in rewards.keys(): # set all agent's rewards to altrustic reward D
+                    rewards[agent] = (1 - self.alt_alpha) * rewards[agent] + self.alt_alpha * (social_welfare - rewards[agent])
+
         if self.inequity_averse_reward:
             assert self.num_agents > 1, "Cannot use inequity aversion with only one agent!"
             temp_rewards = rewards.copy()
@@ -303,6 +328,8 @@ class MapEnv(MultiAgentEnv):
                 temp_rewards[agent] -= (dis_inequity + adv_inequity) / (self.num_agents - 1)
             rewards = temp_rewards
 
+        if self.play_altruistic_game:
+            self.rewards = (rewards, payoffs, social_welfare)
         dones["__all__"] = np.any(list(dones.values()))
         return observations, rewards, dones, infos
 

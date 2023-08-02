@@ -24,8 +24,11 @@ class HarvestEnv(MapEnv):
         return_agent_actions=False,
         use_collective_reward=False,
         inequity_averse_reward=False,
+        play_altruistic_game=False,
+        altruistic_model="A",
         alpha=0.0,
         beta=0.0,
+        alt_alpha=0.0,
     ):
         super().__init__(
             ascii_map,
@@ -35,8 +38,11 @@ class HarvestEnv(MapEnv):
             return_agent_actions=return_agent_actions,
             use_collective_reward=use_collective_reward,
             inequity_averse_reward=inequity_averse_reward,
+            play_altruistic_game=play_altruistic_game,
+            altruistic_model=altruistic_model,
             alpha=alpha,
             beta=beta,
+            alt_alpha=alt_alpha,
         )
         self.apple_points = []
         for row in range(self.base_map.shape[0]):

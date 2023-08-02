@@ -8,8 +8,11 @@ def get_env_creator(
     num_agents,
     use_collective_reward=False,
     inequity_averse_reward=False,
+    play_altruistic_game=False,
+    altruistic_model="A",
     alpha=0.0,
     beta=0.0,
+    alt_alpha=0.0,
     num_switches=6,
 ):
     if env == "harvest":
@@ -20,8 +23,11 @@ def get_env_creator(
                 return_agent_actions=True,
                 use_collective_reward=use_collective_reward,
                 inequity_averse_reward=inequity_averse_reward,
+                play_altruistic_game=play_altruistic_game,
+                altruistic_model=altruistic_model,
                 alpha=alpha,
                 beta=beta,
+                alt_alpha=alt_alpha,
             )
 
     elif env == "cleanup":
@@ -32,8 +38,10 @@ def get_env_creator(
                 return_agent_actions=True,
                 use_collective_reward=use_collective_reward,
                 inequity_averse_reward=inequity_averse_reward,
+                play_altruistic_game=play_altruistic_game,
                 alpha=alpha,
                 beta=beta,
+                alt_alpha=alt_alpha,
             )
 
     elif env == "switch":
